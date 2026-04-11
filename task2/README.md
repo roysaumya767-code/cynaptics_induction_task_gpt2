@@ -26,6 +26,7 @@ Instead of training a language model from scratch, this project uses **transfer 
 
 ## Training and validation loss:
 <img width="627" height="658" alt="Screenshot 2026-04-11 134208" src="https://github.com/user-attachments/assets/c9becfd0-2781-43e9-b132-3e32d99323b8" />
+
 ## One sample of generated response and plotting of Training and validation loss:
 <img width="1675" height="712" alt="Screenshot 2026-04-11 134226" src="https://github.com/user-attachments/assets/6aa83060-534b-4dbd-95cb-f9c8771d7c5d" />
 
