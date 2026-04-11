@@ -102,40 +102,11 @@ After training, the model generates text using:
 * Softmax probabilities
 * Multinomial sampling
 
-### Example Usage
+## 🧩 The Training and validation loss are shown here:
+<img width="532" height="279" alt="Screenshot 2026-04-09 195501" src="https://github.com/user-attachments/assets/23013f19-21be-4d18-bda5-58949d721ba0" />
 
-```python
-initial = "once upon a time"
-idx = torch.tensor([encode(initial)], dtype=torch.long, device=device)
-
-output = model.generate(idx, max_new_tokens=1000)
-print(decode(output[0].tolist()))
-```
-
----
-
-## 🧪 Sample Output
-
-```
-once upon a time the king hath spoken,
-and in the silent night his words were broken...
-```
-
-*(Output will vary depending on training)*
-
----
-
-## 📁 Project Structure
-
-```
-├── train.py        # Main training + generation script
-├── shakespeare.txt # Dataset (auto-downloaded)
-├── README.md
-```
-
----
-
-## 🧩 Key Concepts
+## 🧩 The Text generation results are:
+<img width="595" height="840" alt="Screenshot 2026-04-09 195533" src="https://github.com/user-attachments/assets/60936348-f956-43c1-9d27-a2b51b6c1aca" />
 
 ### Masked Self-Attention
 
