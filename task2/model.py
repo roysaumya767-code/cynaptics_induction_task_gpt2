@@ -1,3 +1,10 @@
+
+
+  
+
+
+
+
 from datasets import load_dataset
 
 
@@ -36,8 +43,11 @@ def format_alpaca_prompt(example: dict) -> dict:
 def load_alpaca_dataset(split: str = "train", test_size: float = 0.1, valid_size: float = 0.05, seed: int = 42):
     """
     load the alpaca dataset from HF and apply the prompt template.
+
     """
+
     dataset = load_dataset("tatsu-lab/alpaca", split="train")
+
 
 
     dataset = dataset.map(format_alpaca_prompt)
@@ -87,6 +97,20 @@ if __name__ == "__main__":
 import torch
 torch.cuda.empty_cache()
 from torch.utils.data import Dataset
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from transformers import GPT2Tokenizer, GPT2LMHeadModel
+tokenizer = GPT2Tokenizer.from_pretrained("distilgpt2")
+model = GPT2LMHeadModel.from_pretrained("distilgpt2")
+#padding
+tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+model.resize_token_embeddings(len(tokenizer))
+model.config.pad_token_id = tokenizer.pad_token_id
+#device
+model.to(device)
+text = "Replace me by any text you'd like."
+encoded_input = tokenizer(text, return_tensors='pt').to(device)
+output = model(**encoded_input)
+print(output)
 
 class InstructionDataset(Dataset):
   def __init__(self, data, tokenizer):
@@ -95,85 +119,28 @@ class InstructionDataset(Dataset):
     self.encoded_texts = []
     for entry in data:
 
-      full_text = format_alpaca_prompt(entry)
 
-      self.encoded_texts.append(
-          tokenizer.encode(full_text["text"])
-      )
+      full_text = entry["text"]
+
+      enc = tokenizer(
+          full_text,
+          truncation=True,
+          padding="max_length",
+          max_length=128
+            )
+      input_ids = torch.tensor(enc["input_ids"], dtype=torch.long)
+      targets = input_ids[1:].clone()
+      targets[targets == tokenizer.pad_token_id] = -100
+
+      self.encoded_texts.append((input_ids[:-1], targets))
+
 
   def __getitem__(self, index):
     return self.encoded_texts[index]
 
   def __len__(self):
-    return len(self.data)
+    return len(self.encoded_texts)
 
-
-import tiktoken
-tokenizer = tiktoken.get_encoding("gpt2")
-
-
-
-def custom_collate_draft_1(
-    batch,
-    pad_token_id=50256,
-    device="cpu"
-):
-    batch_max_length = max(len(item)+1 for item in batch)
-    inputs_lst = []
-    for item in batch:
-      new_item = item.copy()
-      new_item += [pad_token_id]
-      padded = (
-          new_item + [pad_token_id] *
-          (batch_max_length - len(new_item))
-      )
-
-      inputs = torch.tensor(padded[:-1])
-      inputs_lst.append(inputs)
-
-    inputs_tensor = torch.stack(inputs_lst).to(device)
-    return inputs_tensor
-def custom_collate_draft(
-    batch,
-    pad_token_id=50256,
-    ignore_index= -100,
-    allowed_max_length=None,
-    device="cpu"
-):
-    batch_max_length = max(len(item)+1 for item in batch)
-    inputs_lst,targets_lst= [],[]
-    for item in batch:
-      new_item = item.copy()
-      new_item += [pad_token_id]
-      padded = (
-          new_item + [pad_token_id] *
-          (batch_max_length - len(new_item))
-      )
-
-      inputs = torch.tensor(padded[:-1])
-      targets = torch.tensor(padded[1:])
-      mask = targets == pad_token_id
-      indices = torch.nonzero(mask).squeeze()
-      if indices.numel()>1:
-        targets[indices[1:]] = ignore_index
-
-      if allowed_max_length is not None:
-        inputs = inputs[:allowed_max_length]
-        targets = targets[:allowed_max_length]
-
-
-
-      inputs_lst.append(inputs)
-      targets_lst.append(targets)
-
-    inputs_tensor = torch.stack(inputs_lst).to(device)
-    targets_tensor = torch.stack(targets_lst).to(device)
-    return inputs_tensor, targets_tensor
-
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-from functools import partial
-customized_collate_fn = partial(custom_collate_draft, device= device , allowed_max_length = 128)
 from torch.utils.data import DataLoader
 num_workers = 0
 batch_size = 4
@@ -183,7 +150,7 @@ train_dataset = InstructionDataset(train_data, tokenizer)
 train_loader = DataLoader(
     train_dataset,
     batch_size = batch_size,
-    collate_fn = customized_collate_fn,
+
     shuffle=True,
     drop_last = True,
     num_workers=num_workers
@@ -193,7 +160,7 @@ val_dataset = InstructionDataset(valid_data, tokenizer)
 val_loader = DataLoader(
     val_dataset,
     batch_size = batch_size,
-    collate_fn = customized_collate_fn,
+
     shuffle=True,
     drop_last = True,
     num_workers=num_workers
@@ -203,24 +170,13 @@ test_dataset = InstructionDataset(test_data, tokenizer)
 test_loader = DataLoader(
     test_dataset,
     batch_size = batch_size,
-    collate_fn = customized_collate_fn,
+
     shuffle=True,
     drop_last = True,
     num_workers=num_workers
 
 )
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
-tokenizer = GPT2Tokenizer.from_pretrained("distilgpt2")
-model = GPT2LMHeadModel.from_pretrained("distilgpt2")
-#padding
-tokenizer.pad_token = tokenizer.eos_token
-model.config.pad_token_id = tokenizer.eos_token_id
-#device
-model.to(device)
-text = "Replace me by any text you'd like."
-encoded_input = tokenizer(text, return_tensors='pt').to(device)
-output = model(**encoded_input)
-print(output)
+
 
 
 def calc_loss_batch(input_batch , target_batch, model, device):
@@ -268,7 +224,7 @@ def generate_and_print_sample(model, tokenizer, device, start_context):
             max_new_tokens=100,
             num_return_sequences=1,
             no_repeat_ngram_size=2,
-            pad_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
             do_sample=True,
             top_k=50,
             top_p=0.95
@@ -328,9 +284,36 @@ num_epochs = 1
 val_data = load_alpaca_dataset(split="valid")
 train_losses, val_losses, tokens_seen = train_model_simple(
     model, train_loader, val_loader, optimizer, device,
-    num_epochs=num_epochs, eval_freq=1000, eval_iter=5,
-    start_context=format_alpaca_prompt(val_data[0])["text"], tokenizer = tokenizer
+    num_epochs=num_epochs, eval_freq=500, eval_iter=5,
+    start_context=val_data[0]["text"], tokenizer = tokenizer
 )
 end_time = time.time()
 execution_time_minutes = (end_time - start_time) / 60
 print(f"Training completed in {execution_time_minutes:.2f} minutes.")
+
+
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+def plot_losses(epochs_seen, tokens_seen, train_losses, val_losses):
+  fig, ax1 = plt.subplots(figsize=(5, 3))
+  ax1.plot(epochs_seen, train_losses, label="Training loss")
+  ax1.plot(epochs_seen, val_losses, linestyle="-.", label="Validation loss")
+  ax1.set_xlabel("Epochs")
+  ax1.set_ylabel("Loss")
+  ax1.legend(loc="upper right")
+  ax1.xaxis.set_major_locator(MaxNLocator(integer=True))
+  ax2 = ax1.twiny()
+  ax2.plot(tokens_seen, train_losses, alpha=0)
+  ax2.set_xlabel("Tokens seen")
+  fig.tight_layout()
+  plt.savefig("loss-plot.pdf")
+  plt.show()
+
+
+epochs_tensor = torch.linspace(0, num_epochs, len(train_losses))
+plot_losses(epochs_tensor, tokens_seen, train_losses, val_losses)
+
+
+
+
+
